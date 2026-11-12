@@ -91,14 +91,16 @@ You use it to back up the flash, prepare the disks and copy Debian onto them.
 On the build host:
 ```sh
 sudo debootstrap --arch=armhf \
-  --include=openssh-server,mdadm,ifupdown,isc-dhcp-client,smartmontools,mtd-utils,rsync,gdisk,nano \
+  --include=openssh-server,sudo,mdadm,ifupdown,isc-dhcp-client,smartmontools,mtd-utils,rsync,gdisk,nano \
   trixie $W/rootfs http://deb.debian.org/debian
 cd $W/linux-6.12.* && sudo make ARCH=arm INSTALL_MOD_PATH=$W/rootfs modules_install
 sudo mkdir -p $W/rootfs/lib/modules/6.12.*/extra
 sudo cp al_nand.ko al_thermal.ko al_ext_pcie.ko $W/rootfs/lib/modules/6.12.*/extra/
 echo nas-debian | sudo tee $W/rootfs/etc/hostname
 printf 'auto lo\niface lo inet loopback\n' | sudo tee $W/rootfs/etc/network/interfaces  # network comes from the initramfs
-sudo chroot $W/rootfs passwd                      # root password (needs qemu-user-static)
+sudo chroot $W/rootfs passwd                      # root password, for the serial console (needs qemu-user-static)
+sudo chroot $W/rootfs useradd -m -s /bin/bash -G sudo admin   # your user for SSH (any name)
+sudo chroot $W/rootfs passwd admin
 sudo chroot $W/rootfs depmod -a 6.12.116
 echo "$W/rootfs 192.168.1.130(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
 sudo exportfs -ra
@@ -107,7 +109,11 @@ Then on the U-Boot console, as in step 3 but with:
 ```
 setenv bootargs console=ttyS0,115200 rdinit=/init debroot=192.168.1.10:/home/you/nas-linux/rootfs
 ```
-Debian starts; log in on the serial console or with SSH.
+Debian starts. Log in:
+- on the **serial console** as `root` with the password set above;
+- with **SSH** as the user you created: `ssh admin@192.168.1.130`, then `sudo -i`.
+  The SSH server is included (`openssh-server`), but Debian does not allow `root` to log in over SSH with a password.
+  If you prefer root over SSH, copy your public key to `$W/rootfs/root/.ssh/authorized_keys` (mode 600) before booting.
 
 ## 5. Back up the internal flash (mandatory)
 
