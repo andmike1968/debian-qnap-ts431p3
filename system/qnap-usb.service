@@ -3,7 +3,7 @@ Description=USB ports of the QNAP TS-431P3 (al_ext_pcie)
 After=local-fs.target
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/avvia-usb.sh
+ExecStart=/usr/local/sbin/qnap-usb-load.sh
 RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target

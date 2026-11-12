@@ -141,8 +141,8 @@ Copy the files in `system/`:
 | `qnap-mcu-poweroff` | `/usr/lib/systemd/system-shutdown/` (chmod 755) | real power-off via MCU |
 | `interfaces` | `/etc/network/interfaces` | bonding failover, Wake-on-LAN on `enp0s1` (needs `bonding.ko`) |
 | `al_ext_pcie.conf` | `/etc/modprobe.d/` | USB driver option |
-| `avvia-usb.sh`, `nutri_wd.py` | `/usr/local/sbin/` | load USB driver at boot, guarded by the hardware watchdog |
-| `avvia-usb.service` | `/etc/systemd/system/` (`systemctl enable avvia-usb`) | |
+| `qnap-usb-load.sh`, `feed-watchdog.py` | `/usr/local/sbin/` | load USB driver at boot, guarded by the hardware watchdog |
+| `qnap-usb.service` | `/etc/systemd/system/` (`systemctl enable qnap-usb`) | |
 | `90-nas-memory.conf` | `/etc/sysctl.d/` | `vm.min_free_kbytes=65536` (network stability) |
 
 Wake-on-LAN: `ethtool enp0s1` must show `Wake-on: g`; wake it with `wakeonlan <MAC of enp0s1>`.

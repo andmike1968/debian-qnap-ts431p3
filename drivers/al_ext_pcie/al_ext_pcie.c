@@ -4,9 +4,9 @@
  * Reduced from drivers/pci/host/pci-external-alpine.c of the QNAP GPL sources (QTS 5.2.3, kernel 4.2).
  * U-Boot has already brought the link up (PBS pcie_conf_1 bit0, LTSSM L0): this driver only provides
  * the right config-space access (local bridge + ECAM with forced bus number), MSI and PCIe tuning.
- * Parameters (names kept as on the running system):
- *   aggiungi=0 (default): only list the devices found, do NOT hand them to drivers.
- *   aggiungi=1          : hand them to drivers (xhci).
+ * Parameters:
+ *   add_devices=0 (default): only list the devices found, do NOT hand them to drivers.
+ *   add_devices=1          : hand them to drivers (xhci).
  *   dma32=1, nosnoop=1  : debugging switches, off by default (they did not fix the USB write errors).
  */
 #include <linux/module.h>
@@ -19,15 +19,15 @@
 #include <linux/dma-mapping.h>
 
 #define AL_REGS   0xfd800000UL	/* pcie-external0 controller registers */
-#define AL_ECAM   0xfb600000UL	/* finestra ECAM (PBS ext_ecam0 = 0xfb603106) */
+#define AL_ECAM   0xfb600000UL	/* ECAM window (PBS ext_ecam0 = 0xfb603106) */
 #define AL_PBS    0xfd8a8000UL
 #define AXI_CFG_TARGET_BUS 0x40	/* rev2: axi.ob_ctrl.cfg_target_bus */
 #define AXI_CFG_CONTROL    0x44	/* rev2: axi.ob_ctrl.cfg_control */
 #define APP_DEBUG_INFO0    0x1080	/* rev2: app (0x1000) + debug (0x80) */
 #define BRIDGE_CFG         0x2000	/* cfg-space-offset from the original DTB */
 
-static int aggiungi;
-module_param(aggiungi, int, 0444);
+static int add_devices;
+module_param(add_devices, int, 0444);
 static int dma32 = 0;
 module_param(dma32, int, 0444);
 /* debug: clear the AXI snoop bits of the USB DMA (QTS enables CCU snoop, mainline does not) */
@@ -97,7 +97,7 @@ static int __init al_init(void)
 {
 	void __iomem *pbs;
 	struct device_node *gic;
-	struct of_phandle_args ia = { .args_count = 3, .args = { 0, 45, 4 } }; /* GIC SPI 45, livello alto */
+	struct of_phandle_args ia = { .args_count = 3, .args = { 0, 45, 4 } }; /* GIC SPI 45, level high */
 	u32 conf1, info0, ltssm;
 	struct pci_bus *bus;
 	int rc;
@@ -155,16 +155,16 @@ static int __init al_init(void)
 		struct device_node *mx = of_find_compatible_node(NULL, NULL, "al,alpine-msix");
 		struct irq_domain *d = mx ? irq_find_matching_fwnode(of_node_to_fwnode(mx), DOMAIN_BUS_PCI_MSI) : NULL;
 		of_node_put(mx);
-		pr_info("al_ext_pcie: dominio MSI %s\n", d ? d->name : "NON trovato");
+		pr_info("al_ext_pcie: MSI domain %s\n", d ? d->name : "NOT found");
 		if (d)
 			dev_set_msi_domain(&A.bridge->dev, d);
 	}
 	pci_add_resource(&A.bridge->windows, &A.mem);
 	pci_add_resource(&A.bridge->windows, &A.busn);
 
-	pr_info("al_ext_pcie: scansione bus (aggiungi=%d)\n", aggiungi);
+	pr_info("al_ext_pcie: scanning bus (add_devices=%d)\n", add_devices);
 	rc = pci_scan_root_bus_bridge(A.bridge);
-	if (rc) { pr_err("al_ext_pcie: scansione fallita %d\n", rc); pci_free_host_bridge(A.bridge); A.bridge = NULL; goto err_pdev; }
+	if (rc) { pr_err("al_ext_pcie: scan failed %d\n", rc); pci_free_host_bridge(A.bridge); A.bridge = NULL; goto err_pdev; }
 	bus = A.bridge->bus;
 	pci_bus_size_bridges(bus);
 	pci_bus_assign_resources(bus);
@@ -193,7 +193,7 @@ static int __init al_init(void)
 				pr_info("al_ext_pcie: %s MRRS %d, ExtTag off\n", pci_name(d), pcie_get_readrq(d));
 			}
 	}
-	if (aggiungi) {
+	if (add_devices) {
 		pci_bus_add_devices(bus);
 		pr_info("al_ext_pcie: devices handed to drivers\n");
 	}
