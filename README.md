@@ -45,6 +45,7 @@ Steps 1–5 do not change the NAS; the guide marks clearly the destructive ones.
   so it can address more than 4 GB if the RAM has been upgraded (our unit runs with upgraded RAM).
 - 4 SATA bays on the second AHCI controller (`0000:00:09.0`), ports 0–3.
 - Serial console: 4-pin `UART0_DEBUG` header (JST PH, 2 mm), 115200 8N1, **3.3 V**.
+  Pin numbers are marked in the photo: **pin 1 is the rightmost** (the board prints a small `4` next to the leftmost one).
   Pinout measured on our unit: **pin 1 = TX** (NAS output), **pin 2 = VCC 3.3 V (leave unconnected)**,
   **pin 3 = RX** (NAS input), **pin 4 = GND**. Connect GND, and cross RX/TX with the adapter.
   The 4-pin `MCU_ISP` header next to it is **not** the console: do not use it.
