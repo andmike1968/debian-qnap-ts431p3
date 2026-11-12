@@ -1,0 +1,139 @@
+--- a/drivers/ata/ahci.c	2026-11-10 15:29:16.554776361 +0100
++++ b/drivers/ata/ahci.c	2026-11-10 15:51:21.435379613 +0100
+@@ -31,6 +31,8 @@
+ #include <linux/libata.h>
+ #include <linux/ahci-remap.h>
+ #include <linux/io-64-nonatomic-lo-hi.h>
++#include <linux/of.h>
++#include <linux/gpio/consumer.h>
+ #include "ahci.h"
+ 
+ #define DRV_NAME	"ahci"
+@@ -124,6 +126,76 @@
+ 	.hardreset		= ahci_avn_hardreset,
+ };
+ 
++/*
++ * 10/11/2026: LED dei dischi del QNAP TS-431P3, comandati da GPIO come in QTS
++ * (al_ahci_transmit_led_message di libahci.c QNAP, nodo "annapurna-labs,al-sata-sw-leds").
++ * Valore logico 1 = LED acceso (la polarita' sta nel DTB). Spento se la porta non ha disco.
++ */
++static bool al_led_inverti;
++module_param_named(led_inverti, al_led_inverti, bool, 0644);
++MODULE_PARM_DESC(led_inverti, "inverte i LED dei dischi QNAP (polarita' GPIO)");
++
++static ssize_t al_ahci_transmit_led_message(struct ata_port *ap, u32 state,
++					    ssize_t size)
++{
++	struct ahci_host_priv *hpriv = ap->host->private_data;
++	struct ahci_port_priv *pp = ap->private_data;
++	int pmp = (state & EM_MSG_LED_PMP_SLOT) >> 8;
++	struct gpio_desc *g;
++
++	if (pmp >= EM_MAX_SLOTS || ap->port_no >= AHCI_MAX_PORTS || !pp)
++		return -EINVAL;
++	g = hpriv->led_gpio[ap->port_no];
++	if (!g)
++		return -EINVAL;
++	gpiod_set_value(g, (!(state & EM_MSG_LED_VALUE_ON) &&
++			    ata_link_online(&ap->link)) ^ al_led_inverti);
++	pp->em_priv[pmp].led_state = state;
++	return size;
++}
++
++static struct ata_port_operations ahci_al_ops = {
++	.inherits		= &ahci_ops,
++	.transmit_led_message	= al_ahci_transmit_led_message,
++};
++
++static void ahci_al_leds_init(struct pci_dev *pdev, struct ahci_host_priv *hpriv,
++			      struct ata_port_info *pi)
++{
++	struct device_node *np, *child;
++	u32 dom, bus, dev, port;
++
++	np = of_find_compatible_node(NULL, NULL, "annapurna-labs,al-sata-sw-leds");
++	if (!np)
++		return;
++	for_each_child_of_node(np, child) {
++		struct gpio_desc *g;
++
++		if (of_property_read_u32(child, "pci_domain", &dom) ||
++		    dom != pci_domain_nr(pdev->bus) ||
++		    of_property_read_u32(child, "pci_bus", &bus) ||
++		    bus != pdev->bus->number ||
++		    of_property_read_u32(child, "pci_dev", &dev) ||
++		    dev != PCI_SLOT(pdev->devfn) ||
++		    of_property_read_u32(child, "port", &port) ||
++		    port >= AHCI_MAX_PORTS)
++			continue;
++		g = devm_fwnode_gpiod_get_index(&pdev->dev, of_fwnode_handle(child),
++						NULL, 0, GPIOD_OUT_LOW, "sata led");
++		if (IS_ERR(g)) {
++			dev_warn(&pdev->dev, "LED porta %u: gpio non disponibile (%ld)\n",
++				 port, PTR_ERR(g));
++			continue;
++		}
++		hpriv->led_gpio[port] = g;
++		hpriv->em_msg_type = EM_MSG_TYPE_LED;
++		pi->flags |= ATA_FLAG_EM | ATA_FLAG_SW_ACTIVITY;
++		pi->port_ops = &ahci_al_ops;
++		dev_info(&pdev->dev, "LED porta %u su GPIO\n", port);
++	}
++	of_node_put(np);
++}
++
+ static const struct ata_port_info ahci_port_info[] = {
+ 	/* by features */
+ 	[board_ahci] = {
+@@ -2080,6 +2152,9 @@
+ 
+ 	ahci_set_em_messages(hpriv, &pi);
+ 
++	if (board_id == board_ahci_al)
++		ahci_al_leds_init(pdev, hpriv, &pi);
++
+ 	if (ahci_broken_system_poweroff(pdev)) {
+ 		pi.flags |= ATA_FLAG_NO_POWEROFF_SPINDOWN;
+ 		dev_info(&pdev->dev,
+@@ -2189,6 +2264,20 @@
+ 	if (rc)
+ 		goto err_rm_sysfs_file;
+ 
++	/* 10/11/2026: LED QNAP lampeggianti di default (QTS: acceso fermo, lampeggio su attivita') */
++	if (board_id == board_ahci_al) {
++		for (i = 0; i < host->n_ports; i++) {
++			struct ata_port *ap = host->ports[i];
++			struct ahci_port_priv *pp = ap->private_data;
++
++			if (!hpriv->led_gpio[ap->port_no] || !pp ||
++			    !(ap->flags & ATA_FLAG_SW_ACTIVITY))
++				continue;
++			pp->em_priv[0].blink_policy = BLINK_ON;
++			ap->link.flags |= ATA_LFLAG_SW_ACTIVITY;
++		}
++	}
++
+ 	pm_runtime_put_noidle(&pdev->dev);
+ 	return 0;
+ 
+--- a/drivers/ata/ahci.h	2026-11-10 15:29:16.558775700 +0100
++++ b/drivers/ata/ahci.h	2026-11-10 15:30:47.921066325 +0100
+@@ -326,6 +326,7 @@
+ 	char			*irq_desc;	/* desc in /proc/interrupts */
+ };
+ 
++struct gpio_desc;
+ struct ahci_host_priv {
+ 	/* Input fields */
+ 	unsigned int		flags;		/* AHCI_HFLAG_* */
+@@ -378,6 +379,9 @@
+ 	/* only required for per-port MSI(-X) support */
+ 	int			(*get_irq_vector)(struct ata_host *host,
+ 						  int port);
++
++	/* 10/11/2026: LED dei dischi su GPIO (QNAP TS-431P3, come QTS) */
++	struct gpio_desc	*led_gpio[AHCI_MAX_PORTS];
+ };
+ 
+ /*

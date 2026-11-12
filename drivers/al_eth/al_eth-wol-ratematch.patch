@@ -1,0 +1,76 @@
+diff --git a/src/al_eth_main.c b/src/al_eth_main.c
+index 25eeaf9..e0e4111 100644
+--- a/src/al_eth_main.c
++++ b/src/al_eth_main.c
+@@ -2174,7 +2174,10 @@ static void al_eth_adjust_link(struct net_device *dev)
+ 			case SPEED_1000:
+ 			case SPEED_100:
+ 			case SPEED_10:
+-				if (adapter->mac_mode == AL_ETH_MAC_MODE_RGMII)
++				if (phydev->interface == PHY_INTERFACE_MODE_10GBASER)
++					/* 10/11/2026: PHY Aquantia in rate matching (XFI fisso verso il MAC): resta 10GbE */
++					mac_mode_needed = AL_ETH_MAC_MODE_10GbE_Serial;
++				else if (adapter->mac_mode == AL_ETH_MAC_MODE_RGMII)
+ 					mac_mode_needed = AL_ETH_MAC_MODE_RGMII;
+ 				else
+ 					mac_mode_needed = AL_ETH_MAC_MODE_SGMII;
+@@ -2307,7 +2310,7 @@ static int al_eth_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
+ 	if (adapter->phy_exist == false)
+ 		return -EOPNOTSUPP;
+ 
+-	netdev_info(adapter->netdev, "ioctl: phy id 0x%x, reg 0x%x, val_in 0x%x\n",
++	netdev_dbg(adapter->netdev, "ioctl: phy id 0x%x, reg 0x%x, val_in 0x%x\n",
+ 			mdio->phy_id, mdio->reg_num, mdio->val_in);
+ 
+ 	if (adapter->mdio_bus) {
+@@ -4874,6 +4877,31 @@ static const struct ethtool_ops al_eth_ethtool_ops = {
+ };
+ #endif
+ 
++
++/* 09/11/2026: ethtool minimo per kernel 6.12 (il blocco originale e' incompatibile).
++ * Velocita'/link e Wake-on-LAN passano direttamente al PHY collegato (netdev->phydev). */
++static void al_eth_min_get_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
++{
++	wol->supported = 0; wol->wolopts = 0;
++	if (netdev->phydev)
++		phy_ethtool_get_wol(netdev->phydev, wol);
++}
++static int al_eth_min_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
++{
++	int rc;
++	if (!netdev->phydev)
++		return -EOPNOTSUPP;
++	rc = phy_ethtool_set_wol(netdev->phydev, wol);
++	if (!rc)
++		device_set_wakeup_enable(&netdev->dev, !!wol->wolopts);
++	return rc;
++}
++static const struct ethtool_ops al_eth_ethtool_ops_min = {
++	.get_link		= ethtool_op_get_link,
++	.get_wol		= al_eth_min_get_wol,
++	.set_wol		= al_eth_min_set_wol,
++};
++
+ /* These numbers were obtained empirically by simulation of valid mss, header length
+  * and payload length values
+  */
+@@ -5254,6 +5282,7 @@ static const struct net_device_ops al_eth_netdev_ops = {
+ 	.ndo_select_queue	= al_eth_select_queue,
+ 	.ndo_get_stats64	= al_eth_get_stats64,
+ 	.ndo_do_ioctl		= al_eth_ioctl,
++	.ndo_eth_ioctl		= al_eth_ioctl, /* 6.12: le ioctl MII passano da qui */
+ 	.ndo_tx_timeout		= al_eth_tx_timeout,
+ 	.ndo_change_mtu		= al_eth_change_mtu,
+ 	.ndo_set_mac_address	= al_eth_set_mac_addr,
+@@ -5520,9 +5549,7 @@ al_eth_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	netdev->netdev_ops = &al_eth_netdev_ops;
+ 
+ 	netdev->watchdog_timeo = TX_TIMEOUT;
+-#if 0
+-	netdev->ethtool_ops = &al_eth_ethtool_ops;
+-#endif
++	netdev->ethtool_ops = &al_eth_ethtool_ops_min;
+ 
+ 	if (!is_valid_ether_addr(adapter->mac_addr)) {
+ 		eth_hw_addr_random(netdev);

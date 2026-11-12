@@ -1,0 +1,59 @@
+#!/bin/busybox sh
+# Initramfs di PROVA per QNAP TS-431P3: Linux solo in RAM, i dischi NON vengono montati ne' scritti.
+/bin/busybox --install -s /bin
+mount -t devtmpfs devtmpfs /dev
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+echo
+echo "=== PROVA TS-431P3: Linux solo in RAM, dischi NON toccati ==="
+uname -a
+echo "core: $(grep -c ^processor /proc/cpuinfo)"
+free -m
+echo "--- carico al_eth"
+insmod /lib/modules/al_eth.ko && echo "al_eth CARICATO" || echo "al_eth ERRORE"
+echo "--- attendo dischi (max 30 s)"
+i=0
+while ! grep -q " sd" /proc/partitions && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+cat /proc/partitions
+# Avvio di Debian dai dischi (parametro rootmd sulla riga di comando del kernel)
+if grep -q rootmd /proc/cmdline; then
+  echo "--- compongo i RAID dai dischi"
+  mkdir -p /etc/mdadm /newroot
+  cp /etc/mdadm.conf /etc/mdadm/mdadm.conf 2>/dev/null
+  i=0; while [ ! -b /dev/sdc1 ] && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+  /sbin/mdadm --assemble --scan --config=/etc/mdadm.conf 2>&1
+  cat /proc/mdstat
+  if mount -o ro -t ext4 /dev/md0 /newroot && [ -x /newroot/sbin/init ]; then
+    echo "--- passo a Debian dai dischi"
+    umount /proc /sys 2>/dev/null; mount --move /dev /newroot/dev 2>/dev/null
+    exec switch_root /newroot /sbin/init
+  fi
+  echo "!!! md0 non montabile: console di emergenza sulla seriale"
+  while true; do setsid cttyhack sh; done
+fi
+echo "--- schede di rete"
+# MAC originali del NAS (letti da QTS): eth0 = 2,5 GbE, eth1 = 1 GbE
+ip link set eth0 address xx:xx:xx:xx:xx:b2 2>/dev/null
+ip link set eth1 address xx:xx:xx:xx:xx:b3 2>/dev/null
+for n in $(ls /sys/class/net | grep -v lo); do timeout 5 ip link set $n up 2>&1; done
+sleep 8
+for n in $(ls /sys/class/net | grep -v lo); do
+  c=$(cat /sys/class/net/$n/carrier 2>/dev/null)
+  echo "$n collegamento=$c"
+  [ "$c" = 1 ] && timeout 30 udhcpc -i $n -n -q -t 5 -s /bin/dhcp.sh 2>&1 | tail -1
+done
+ip -o -4 addr
+# Avvio di Debian da rete se richiesto (root su NFS di AI Desktop, dischi NON montati)
+R=$(sed -n 's/.*debroot=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -n "$R" ]; then
+  echo "--- monto Debian da $R"
+  mkdir -p /newroot
+  if mount -t nfs -o nolock,vers=3,tcp "$R" /newroot && [ -x /newroot/sbin/init ]; then
+    echo "--- passo a Debian"
+    umount /proc /sys 2>/dev/null; mount --move /dev /newroot/dev 2>/dev/null
+    exec switch_root /newroot /sbin/init
+  fi
+  echo "!!! montaggio NFS fallito, resto nel sistema di prova"
+fi
+echo "=== PROVA PRONTA (console seriale) ==="
+while true; do setsid cttyhack sh; done

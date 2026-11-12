@@ -1,0 +1,16 @@
+auto lo
+iface lo inet loopback
+
+# 10/11/2026: collegamento unico con riserva automatica (bonding active-backup).
+# Porta principale enp0s1 (1 GbE), riserva enp0s0 (2,5 GbE). Senza ifenslave: solo iproute2.
+auto bond0
+iface bond0 inet static
+    pre-up ip link add bond0 type bond mode active-backup miimon 100 2>/dev/null || true
+    pre-up ip link set enp0s1 down; ip link set enp0s1 master bond0
+    pre-up ip link set enp0s0 down; ip link set enp0s0 master bond0
+    pre-up echo enp0s1 > /sys/class/net/bond0/bonding/primary
+    hwaddress ether xx:xx:xx:xx:xx:xx
+    address 192.168.1.130/24
+    gateway 192.168.1.1
+    post-up /usr/sbin/ethtool -s enp0s1 wol g
+    post-down ip link del bond0

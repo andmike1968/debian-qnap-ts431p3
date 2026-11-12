@@ -1,0 +1,9 @@
+#!/bin/sh
+# Spegnimento della corrente sul QNAP TS-431P3 (09/11/2026).
+# Il microcontrollore (MCU) su /dev/ttyS1 a 115200 baud comanda l alimentazione.
+# Comando "@C0" + checksum XOR (0x33 = "3"). Gira SOLO a fine spegnimento,
+# quando i dischi sono gia smontati: inviato prima, toglierebbe la corrente ai dischi.
+[ "$1" = poweroff ] || exit 0
+stty -F /dev/ttyS1 115200 cs8 -cstopb -parenb -crtscts -ixon -ixoff raw -echo
+printf "@C03" > /dev/ttyS1
+sleep 2

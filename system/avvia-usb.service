@@ -1,0 +1,9 @@
+[Unit]
+Description=Driver porte USB del QNAP TS-431P3 (al_ext_pcie)
+After=local-fs.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/avvia-usb.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target

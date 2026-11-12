@@ -1,0 +1,234 @@
+/*
+ * Device Tree for QNAP TS-431P (Annapurna Labs Alpine AL-212)
+ *
+ * Based on alpine.dtsi (kernel mainline) with additions from
+ * the QNAP stock DTB for serdes, watchdog, thermal, and I2C.
+ *
+ * PCIe uses pci-host-ecam-generic (from alpine.dtsi) for SATA.
+ * Ethernet board params are in MAC scratch registers (set by U-Boot).
+ * Only the serdes node is needed from DT for al_eth network driver.
+ */
+
+/dts-v1/;
+
+#include "alpine.dtsi"
+
+/ {
+	model = "QNAP TS-431P3";
+	compatible = "qnap,ts-431p3", "al,alpine";
+
+	/* AL-314: 4 core attivi */
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000 0x0 0x80000000 0x0 0x40000000 0x2 0x0 0x0 0x40000000 0x1 0x0 0x1 0x0>; /* 8 GB come stock (serve LPAE) */
+	};
+
+	soc {
+
+		/* SPI: chip del programma di avvio (U-Boot + ambiente). Prima prova: TUTTO in sola lettura */
+		spi@fd882000 {
+			compatible = "snps,dw-apb-ssi";
+			reg = <0x0 0xfd882000 0x0 0x1000>;
+			interrupts = <GIC_SPI 23 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			num-cs = <4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			flash@0 {
+				compatible = "jedec,spi-nor";
+				reg = <0>;
+				spi-max-frequency = <25000000>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				partition@0 {
+					label = "loader";
+					reg = <0x0 0x110000>;
+					read-only;
+				};
+
+				partition@110000 {
+					label = "env";
+					reg = <0x110000 0x60000>;
+					read-only;
+				};
+			};
+		};
+
+		/* SerDes — required by al_eth driver */
+		serdes@fd8c0000 {
+			compatible = "annapurna-labs,al-serdes";
+			reg = <0x0 0xfd8c0000 0x0 0x1000>;
+		};
+
+		/* PBS registers */
+		pbs@fd8a8000 {
+			compatible = "al,alpine-pbs", "annapurna-labs,al-pbs";
+			reg = <0x0 0xfd8a8000 0x0 0x1000>;
+		};
+
+		/* Watchdog (sp805) — for systemd watchdog feeding */
+		wdt0: wdt@fd88c000 {
+			compatible = "arm,sp805", "arm,primecell";
+			reg = <0x0 0xfd88c000 0x0 0x1000>;
+			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+
+		/* Timer (sp804) — needed for clock source */
+		timer1: timer@fd891000 {
+			compatible = "arm,sp804", "arm,primecell";
+			reg = <0x0 0xfd891000 0x0 0x1000>;
+			interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "sbclk";
+		};
+
+		/* I2C — for RTC (Epson RX8010) and PIC controller */
+		i2c0: i2c@fd880000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "snps,designware-i2c";
+			reg = <0x0 0xfd880000 0x0 0x1000>;
+			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-frequency = <400000>;
+
+			rtc@32 {
+				compatible = "epson,rx8010";
+				reg = <0x32>;
+			};
+		};
+
+		/* Thermal sensor */
+		thermal: thermal@fd860a00 {
+			compatible = "al,alpine-thermal", "annapurna-labs,al-thermal";
+			reg = <0x0 0xfd860a00 0x0 0x100>;
+			#thermal-sensor-cells = <0>;
+		};
+
+		/* NAND flash controller */
+		nand-flash@fa100000 {
+			compatible = "al,alpine-nand", "annapurna-labs,al-nand";
+			reg = <0x0 0xfa100000 0x0 0x202000>;
+			interrupts = <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "sbclk";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "boot1_kernel";
+				reg = <0x0 0x2000000>;
+			};
+
+			partition@2000000 {
+				label = "boot1_rootfs2";
+				reg = <0x2000000 0xd800000>;
+			};
+
+			partition@f800000 {
+				label = "boot2_kernel";
+				reg = <0xf800000 0x2000000>;
+			};
+
+			partition@11800000 {
+				label = "boot2_rootfs2";
+				reg = <0x11800000 0xd800000>;
+			};
+
+			partition@1f000000 {
+				label = "config";
+				reg = <0x1f000000 0xf00000>;
+			};
+		};
+
+		/* GPIO controllers */
+		gpio0: gpio@fd887000 {
+			#gpio-cells = <2>;
+			compatible = "arm,pl061", "arm,primecell";
+			gpio-controller;
+			reg = <0x0 0xfd887000 0x0 0x1000>;
+			interrupts = <GIC_SPI 2 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+
+		gpio1: gpio@fd888000 {
+			#gpio-cells = <2>;
+			compatible = "arm,pl061", "arm,primecell";
+			gpio-controller;
+			reg = <0x0 0xfd888000 0x0 0x1000>;
+			interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+
+		/* SB clock reference — needed by timers, watchdog, I2C */
+		sbclk: sbclk {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <375000000>; /* 375 MHz */
+		};
+	};
+
+	thermal-zones {
+		cpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			thermal-sensors = <&thermal>;
+
+			trips {
+				cpu-crit {
+					temperature = <105000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+		};
+	};
+};
+
+/* 10/11/2026: controller GPIO 2-4 (da DTB QTS) e LED dei dischi (al-sata-sw-leds, letti da ahci.c) */
+/ {
+	soc {
+		gpio2: gpio@fd889000 {
+			#gpio-cells = <2>;
+			compatible = "arm,pl061", "arm,primecell";
+			gpio-controller;
+			reg = <0x0 0xfd889000 0x0 0x1000>;
+			interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+		gpio3: gpio@fd88a000 {
+			#gpio-cells = <2>;
+			compatible = "arm,pl061", "arm,primecell";
+			gpio-controller;
+			reg = <0x0 0xfd88a000 0x0 0x1000>;
+			interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+		gpio4: gpio@fd88b000 {
+			#gpio-cells = <2>;
+			compatible = "arm,pl061", "arm,primecell";
+			gpio-controller;
+			reg = <0x0 0xfd88b000 0x0 0x1000>;
+			interrupts = <GIC_SPI 6 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sbclk>;
+			clock-names = "apb_pclk";
+		};
+	};
+
+	sata_sw_leds {
+		compatible = "annapurna-labs,al-sata-sw-leds";
+		led4 { pci_domain = <0>; pci_bus = <0>; pci_dev = <9>; port = <0>; gpios = <&gpio3 0 0>; };
+		led5 { pci_domain = <0>; pci_bus = <0>; pci_dev = <9>; port = <1>; gpios = <&gpio3 1 0>; };
+		led6 { pci_domain = <0>; pci_bus = <0>; pci_dev = <9>; port = <2>; gpios = <&gpio4 4 0>; };
+		led7 { pci_domain = <0>; pci_bus = <0>; pci_dev = <9>; port = <3>; gpios = <&gpio4 5 0>; };
+	};
+};
