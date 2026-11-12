@@ -51,13 +51,26 @@ The script downloads `busybox-static`, `mdadm` and the few libraries it needs st
 (no cross-compiling), adds `init`, `dhcp.sh` and `al_eth.ko`, and writes `uInitrd`.
 It needs only `curl`, `xz`, `dpkg-deb`, `cpio`, `gzip` and `mkimage`.
 
-`mdadm.conf` describes your RAID arrays. For the very first boot (step 3) the RAID does not exist yet:
-use an empty file (`touch mdadm.conf`). After step 5, on the NAS run `mdadm --detail --scan > mdadm.conf`,
-copy it back and rebuild `uInitrd`.
+`mdadm.conf` describes your RAID arrays. Until the RAID exists (steps 3–6) use an empty file (`touch mdadm.conf`).
+In step 7 you rebuild `uInitrd` with the real one.
 
 Put `uImage`, `alpine-qnap-ts431p3.dtb` and `uInitrd` in the TFTP directory.
 
-## 3. First boot over the network (nothing is written)
+## Overview: what touches the NAS, and when
+
+| Step | What happens | Changes the NAS? |
+|---|---|---|
+| 3 | Linux runs in RAM, loaded over the network | No |
+| 4 | Full Debian runs from your build host over NFS | No |
+| 5 | Backup of the internal flash | No (read only) |
+| **6** | **New RAID on the disks** | **Yes: all data on the disks and QTS's disk part are erased** |
+| 7 | Debian copied onto the disks | Disks only |
+| **8–9** | **Debian written into the internal flash, new boot order** | **Yes: first QTS kernel copy replaced** |
+
+After step 6 QTS can still start (its boot loader and kernels are in the internal flash, not on the disks),
+but as a brand-new, uninitialised NAS. The second QTS kernel copy (`boot2_kernel`) is never touched.
+
+## 3. First boot in RAM (nothing is written)
 
 Stop U-Boot's countdown on the serial console, then:
 ```
@@ -66,48 +79,94 @@ tftpboot 0x5000000 uImage; tftpboot 0x4000000 alpine-qnap-ts431p3.dtb; tftpboot 
 setenv bootargs console=ttyS0,115200 rdinit=/init
 bootm 0x5000000 0x4500000 0x4000000
 ```
-Without `rootmd` on the command line the initramfs only runs in RAM and **does not touch the disks**.
-(Note: on this board U-Boot overwrites `ipaddr`/`serverip` at power-on with 169.254.x.x; set them every time
-or use `dhcp` and then `setenv serverip`.)
+You get a small shell on the serial console: check that the 4 cores, the memory, the disks and the network are seen.
+Without `rootmd` or `debroot=` on the command line the disks are **not touched**.
+(On this board U-Boot resets `ipaddr`/`serverip` to 169.254.x.x at every power-on: set them each time.)
 
-## 4. Back up the internal flash (mandatory)
+## 4. Debian from your build host over the network (nothing is written)
 
-From the RAM system: `insmod al_nand.ko modo_uboot=1`, then copy every partition **twice** and compare:
+This gives you a complete Debian on the NAS, with its files still on your build host.
+You use it to back up the flash, prepare the disks and copy Debian onto them.
+
+On the build host:
 ```sh
-for i in 0 1 2 3 4 5 6; do dd if=/dev/mtd${i}ro of=/tmp/mtd$i.bin; md5sum /tmp/mtd$i.bin; done
+sudo debootstrap --arch=armhf \
+  --include=openssh-server,mdadm,ifupdown,isc-dhcp-client,smartmontools,mtd-utils,rsync,gdisk,nano \
+  trixie $W/rootfs http://deb.debian.org/debian
+cd $W/linux-6.12.* && sudo make ARCH=arm INSTALL_MOD_PATH=$W/rootfs modules_install
+sudo mkdir -p $W/rootfs/lib/modules/6.12.*/extra
+sudo cp al_nand.ko al_thermal.ko al_ext_pcie.ko $W/rootfs/lib/modules/6.12.*/extra/
+echo nas-debian | sudo tee $W/rootfs/etc/hostname
+printf 'auto lo\niface lo inet loopback\n' | sudo tee $W/rootfs/etc/network/interfaces  # network comes from the initramfs
+sudo chroot $W/rootfs passwd                      # root password (needs qemu-user-static)
+sudo chroot $W/rootfs depmod -a 6.12.116
+echo "$W/rootfs 192.168.1.130(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
+sudo exportfs -ra
 ```
-Copy the files off the NAS. `modo_uboot=1` is required: without it the ECC layout does not match U-Boot
-and reads/writes are wrong. Check `cat /sys/class/mtd/mtd*/bad_blocks` is 0 before writing anything.
+Then on the U-Boot console, as in step 3 but with:
+```
+setenv bootargs console=ttyS0,115200 rdinit=/init debroot=192.168.1.10:/home/you/nas-linux/rootfs
+```
+Debian starts; log in on the serial console or with SSH.
 
-## 5. Disks (destroys QTS data)
+## 5. Back up the internal flash (mandatory)
 
-On each disk a new GPT: partition 1 = 20 GB, partition 2 = 4 GB, partition 3 = rest (all type Linux RAID).
+In Debian over NFS:
 ```sh
-mdadm --create /dev/md0 --level=1 --raid-devices=3 /dev/sd[abc]1   # system, ext4
+insmod /lib/modules/6.12.*/extra/al_nand.ko modo_uboot=1
+cat /sys/class/mtd/mtd*/bad_blocks            # must all be 0
+for i in 0 1 2 3 4 5 6; do dd if=/dev/mtd${i}ro of=/root/mtd$i.bin; md5sum /root/mtd$i.bin; done
+```
+Do it twice and compare the checksums. The files land on your build host (inside `rootfs/root`): keep them safe.
+`modo_uboot=1` is required: without it the ECC layout does not match U-Boot and reads/writes are wrong.
+
+## 6. Prepare the disks — DESTRUCTIVE
+
+**This erases everything on the disks**, including QTS's system partitions. Back up your data first.
+In Debian over NFS, on each disk (`sda`, `sdb`, `sdc`, ...) a new GPT with three Linux RAID partitions:
+```sh
+for d in sda sdb sdc; do
+  sgdisk --zap-all /dev/$d
+  sgdisk -n1:0:+20G -t1:fd00 -n2:0:+4G -t2:fd00 -n3:0:0 -t3:fd00 /dev/$d
+done
+mdadm --create /dev/md0 --level=1 --raid-devices=3 /dev/sd[abc]1   # system
 mdadm --create /dev/md1 --level=1 --raid-devices=3 /dev/sd[abc]2   # swap
-mdadm --create /dev/md2 --level=5 --raid-devices=3 /dev/sd[abc]3   # data, ext4
+mdadm --create /dev/md2 --level=5 --raid-devices=3 /dev/sd[abc]3   # data
 mkfs.ext4 /dev/md0; mkswap /dev/md1; mkfs.ext4 /dev/md2
+mdadm --detail --scan > /root/mdadm.conf
 ```
-After the initial sync: `mdadm --grow --bitmap=internal /dev/md2` (much faster resync after a crash).
+The RAID 5 sync takes many hours; you can go on meanwhile. When it has finished:
+`mdadm --grow --bitmap=internal /dev/md2` (much faster resync after a crash).
 
-## 6. Debian root filesystem
+## 7. Copy Debian onto the disks
 
+Still in Debian over NFS:
 ```sh
-debootstrap --arch=armhf --include=openssh-server,mdadm,ifupdown,isc-dhcp-client,smartmontools trixie rootfs http://deb.debian.org/debian
+mkdir -p /mnt/target && mount /dev/md0 /mnt/target
+rsync -aAXHx / /mnt/target/                      # -x: the running system only, not /proc, /sys, ...
+cp /root/mdadm.conf /mnt/target/etc/mdadm/mdadm.conf
+cat > /mnt/target/etc/fstab <<EOF
+UUID=$(blkid -s UUID -o value /dev/md0)  /          ext4  defaults,noatime,errors=remount-ro  0 1
+UUID=$(blkid -s UUID -o value /dev/md1)  none       swap  sw                                  0 0
+UUID=$(blkid -s UUID -o value /dev/md2)  /srv/data  ext4  defaults,noatime,nofail             0 2
+EOF
+mkdir -p /mnt/target/srv/data
+cp interfaces /mnt/target/etc/network/interfaces  # from system/: fixed IP + failover, or a single port enp0s1
+umount /mnt/target
 ```
-Copy it to `md0` (mounted on the NAS from the RAM system, e.g. with rsync over the network), then inside:
-- `/etc/fstab`: `md0` → `/`, `md1` swap, `md2` → `/srv/dati` (`nofail`);
-- `/etc/mdadm/mdadm.conf`: `mdadm --detail --scan`;
-- `/etc/network/interfaces`: see `system/interfaces` (bonding with failover; or a single port `enp0s1`);
-- kernel modules in `/lib/modules/6.12.*/` (`modules_install`) plus `al_nand.ko`, `al_thermal.ko`,
-  `al_ext_pcie.ko` in `extra/`, then `depmod -a`;
-- hostname, root SSH key, a user with sudo.
+On the build host rebuild the initramfs **with the real** `mdadm.conf` (copy it from `rootfs/root/mdadm.conf`):
+```sh
+cd initramfs && ./build_initramfs.sh $W/al_eth/src/al_eth.ko $W/rootfs/root/mdadm.conf
+```
+Put the new `uInitrd` on TFTP and boot as in step 3 with:
+```
+setenv bootargs console=ttyS0,115200 rdinit=/init rootmd
+```
+Debian must now start **from the disks**. Do not go on until this works.
 
-Test it: boot over TFTP again as in step 3, adding `rootmd` to `bootargs`. Debian must start from the disks.
+## 8. Write Debian into NAND `boot1_kernel` (mtd2)
 
-## 7. Write Debian into NAND `boot1_kernel` (mtd2)
-
-Only when step 6 works. QTS stays in `boot2_kernel` (mtd4). From Debian (or the RAM system) with
+Only when step 7 works. QTS stays in `boot2_kernel` (mtd4). From Debian (or the RAM system) with
 `al_nand modo_uboot=1` loaded; erase blocks are 128 KiB:
 ```sh
 flash_erase /dev/mtd2 0        96 && nandwrite -p -s 0        /dev/mtd2 uImage                  # 0x000000
@@ -121,7 +180,7 @@ nand read 0x5000000 0x0 0xC00000; nand read 0x4000000 0xC00000 0x20000; nand rea
 setenv bootargs console=ttyS0,115200 rdinit=/init rootmd; bootm 0x5000000 0x4500000 0x4000000
 ```
 
-## 8. Make it permanent (U-Boot environment)
+## 9. Make it permanent (U-Boot environment)
 
 `uboot/uboot_env.py` sets these variables over the serial line (it has a test mode that changes RAM only;
 `saveenv` writes the SPI flash — keep the `mtd1.bin` backup):
@@ -132,7 +191,7 @@ setenv bootargs console=ttyS0,115200 rdinit=/init rootmd; bootm 0x5000000 0x4500
 
 Power-cycle and check Debian comes up by itself.
 
-## 9. Extra hardware support (after first boot)
+## 10. Extra hardware support (after first boot)
 
 Copy the files in `system/`:
 

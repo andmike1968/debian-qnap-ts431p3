@@ -29,8 +29,9 @@ pieces had to be added or rewritten. Everything here was tested on real hardware
 
 ## Installation
 
-Step-by-step guide: **[INSTALL.md](INSTALL.md)** — build, first network boot, NAND backup, disks,
-Debian rootfs, writing to NAND, U-Boot boot chain, extra hardware, and how to go back to QTS.
+Step-by-step guide: **[INSTALL.md](INSTALL.md)** — build, boot in RAM, Debian over the network, NAND backup,
+disks, Debian on the disks, writing to NAND, U-Boot boot chain, extra hardware, and how to go back to QTS.
+Steps 1–5 do not change the NAS; the guide marks clearly the destructive ones.
 
 ## Hardware notes (TS-431P3)
 
