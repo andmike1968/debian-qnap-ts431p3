@@ -38,7 +38,13 @@ Steps 1–5 do not change the NAS; the guide marks clearly the destructive ones.
 - SoC Annapurna Labs **Alpine V1 AL-314**, 4× Cortex-A15. The kernel is built with **LPAE** + HIGHMEM,
   so it can address more than 4 GB if the RAM has been upgraded (our unit runs with upgraded RAM).
 - 4 SATA bays on the second AHCI controller (`0000:00:09.0`), ports 0–3.
-- Serial console: 4-pin `UART0_DEBUG`, 115200 8N1, 3.3 V.
+- Serial console: 4-pin `UART0_DEBUG` header (JST PH, 2 mm), 115200 8N1, **3.3 V**.
+  Pinout measured on our unit: **pin 1 = TX** (NAS output), **pin 2 = VCC 3.3 V (leave unconnected)**,
+  **pin 3 = RX** (NAS input), **pin 4 = GND**. Connect GND, and cross RX/TX with the adapter.
+  The 4-pin `MCU_ISP` header next to it is **not** the console: do not use it.
+
+  ![UART0_DEBUG header on the TS-431P3 board](docs/uart0_debug.jpg)
+
 - MCU (fan, power, buttons) on `/dev/ttyS1` at 115200 8N1.
 
 ## The non-obvious fixes (root causes)
@@ -65,7 +71,12 @@ These are the things that took the longest and that you will hit too:
    ran out of RX buffers (`failed to alloc buffer for rx queue`) during large rsync jobs.
    `vm.min_free_kbytes = 65536` fixed it in our tests.
 
-## Known issues
+## Known issues and limits
+
+- Tested on **one** TS-431P3 only. The installation guide reconstructs what we did; nobody has yet followed it
+  from scratch on another unit. Reports and fixes are welcome.
+- Not handled from Linux (not investigated): fan speed control, front buttons, front panel LEDs other than the
+  HDD ones, the buzzer. They are driven by the MCU on `/dev/ttyS1`; only power-off is implemented.
 
 - If the cable of the **1 GbE port is unplugged/replugged while running**, that port may stop receiving and
   transmit at line rate, flooding the LAN, until reboot. Root cause in `al_eth` not found yet.
@@ -101,7 +112,7 @@ initramfs/      build_initramfs.sh (one command), init script, DHCP helper
 |---|---|
 | `0x000000` | uImage (kernel) |
 | `0xC00000` | DTB |
-| `0xE00000` | uInitrd (contains `al_eth`, `al_nand`) |
+| `0xE00000` | uInitrd (contains `al_eth`, `mdadm`, `busybox`) |
 
 QTS stays untouched in `boot2_kernel` as last fallback.
 
@@ -111,6 +122,7 @@ Built with help from [Claude Code](https://claude.ai/claude-code) (Anthropic).
 
 
 - Base work: [mornepousse](https://github.com/mornepousse).
+- License: **GPL v2** (see `LICENSE`).
 - Driver code derived from Annapurna Labs / QNAP GPL sources (QTS 5.2.3 kernel 4.2). The `al_hal_*`
   files are dual licensed (Annapurna Labs commercial license **or** GPL v2 / BSD); here they are distributed
   under GPL v2. Kernel patches are GPL v2.

@@ -9,7 +9,8 @@ Values to adapt to your network are written as `192.168.1.x` (NAS `192.168.1.130
 ## 0. What you need
 
 - A **USB–serial adapter at 3.3 V** (never 5 V) on the `UART0_DEBUG` 4-pin header (JST PHR-4, 2 mm),
-  115200 8N1. Connect only GND, RX, TX (RX/TX crossed). Measure the pins first: the two public pinouts disagree.
+  115200 8N1. Pinout and photo in the [README](README.md#hardware-notes-ts-431p3). Connect only GND, RX, TX
+  (RX/TX crossed), never pin 2 (VCC). Measure with a multimeter first.
 - A Linux **build host** (x86 is fine) with: `gcc-arm-linux-gnueabihf`, `make`, `bison`, `flex`, `libelf-dev`,
   `bc`, `u-boot-tools` (`mkimage`), `device-tree-compiler`, `debootstrap`, `qemu-user-static` + binfmt
   (to build an armhf rootfs on x86), `busybox-static` (armhf), a **TFTP server** and an **NFS server**.
