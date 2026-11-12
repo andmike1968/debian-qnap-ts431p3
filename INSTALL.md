@@ -184,10 +184,10 @@ setenv bootargs console=ttyS0,115200 rdinit=/init rootmd; bootm 0x5000000 0x4500
 
 `uboot/uboot_env.py` sets these variables over the serial line (it has a test mode that changes RAM only;
 `saveenv` writes the SPI flash — keep the `mtd1.bin` backup):
-- `avvio_nand` — load the three pieces from NAND and boot Debian;
-- `avvio_rete` — DHCP + TFTP from the build host (emergency boot);
-- `avvio_qts` — original QTS from `boot2_kernel`;
-- `bootcmd = run avvio_nand; run avvio_rete; run avvio_qts`.
+- `boot_nand` — load the three pieces from NAND and boot Debian;
+- `boot_net` — DHCP + TFTP from the build host (emergency boot);
+- `boot_qts` — original QTS from `boot2_kernel`;
+- `bootcmd = run boot_nand; run boot_net; run boot_qts`.
 
 Power-cycle and check Debian comes up by itself.
 
@@ -223,9 +223,9 @@ and the disks. There are three levels, from the quickest to the complete one.
 
 On the serial console, stop the U-Boot countdown and type:
 ```
-run avvio_qts
+run boot_qts
 ```
-`avvio_qts` was created in step 9. If it is missing, type it by hand. `<QTS bootargs>` is the original
+`boot_qts` was created in step 9. If it is missing, type it by hand. `<QTS bootargs>` is the original
 `bootargs` line, saved in your environment backup (`printenv` output, or the variable `bootargs_qts`):
 ```
 setenv bootargs '<QTS bootargs>'
@@ -238,11 +238,11 @@ The next power-on starts Debian again.
 ### B. Make QTS the default, keep Debian in the flash
 
 ```
-setenv bootcmd 'run avvio_qts'
+setenv bootcmd 'run boot_qts'
 saveenv
 reset
 ```
-To go back to Debian later: `setenv bootcmd 'run avvio_nand; run avvio_rete; run avvio_qts'; saveenv`.
+To go back to Debian later: `setenv bootcmd 'run boot_nand; run boot_net; run boot_qts'; saveenv`.
 
 ### C. Complete restore (flash exactly as it came from the factory)
 
@@ -255,13 +255,13 @@ nandwrite -p /dev/mtd2 mtd2.bin
 cmp <(head -c $(stat -c %s mtd2.bin) /dev/mtd2ro) mtd2.bin && echo IDENTICAL
 ```
    Restore `mtd3`–`mtd6` the same way only if you changed them (this guide does not).
-2. On the serial console put back the original boot command (step 9 saved it as `bootcmd_qts_originale`):
+2. On the serial console put back the original boot command (step 9 saved it as `bootcmd_qts_orig`):
 ```
 setenv bootcmd 'nand read $loadaddr 0 0x2000000;run sata_cmd;run set_ddr_ro;bootm $loadaddr - $fdtaddr;'
 setenv bootargs '<QTS bootargs>'
 saveenv
 reset
 ```
-   The extra variables added in step 9 (`avvio_*`, `rete_*`, `nand_carica`, ...) are harmless; remove them with
+   The extra variables added in step 9 (`avvio_*`, `rete_*`, `nand_load`, ...) are harmless; remove them with
    `setenv <name>` + `saveenv` if you want an identical environment.
 3. QTS starts from `boot1_kernel` as on a new NAS. Do **not** write back `mtd0` (U-Boot itself) unless it is damaged.
