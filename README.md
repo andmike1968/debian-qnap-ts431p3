@@ -43,7 +43,7 @@ Steps 1–5 do not change the NAS; the guide marks clearly the destructive ones.
   **pin 3 = RX** (NAS input), **pin 4 = GND**. Connect GND, and cross RX/TX with the adapter.
   The 4-pin `MCU_ISP` header next to it is **not** the console: do not use it.
 
-  ![UART0_DEBUG header on the TS-431P3 board](docs/uart0_debug.jpg)
+  <img src="docs/uart0_debug.jpg" alt="UART0_DEBUG header on the TS-431P3 board" width="320">
 
 - MCU (fan, power, buttons) on `/dev/ttyS1` at 115200 8N1.
 
