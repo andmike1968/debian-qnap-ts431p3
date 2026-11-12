@@ -88,7 +88,7 @@ drivers/
   al_thermal/   SoC temperature sensor
 system/         power-off hook, USB loader with watchdog guard, bonding config, sysctl
 uboot/          scripts used over the serial console to set the boot chain
-initramfs/init  init script of the initramfs (RAM test mode, or RAID root with `rootmd`)
+initramfs/      build_initramfs.sh (one command), init script, DHCP helper
 ```
 
 ## Boot layout in NAND (`boot1_kernel`, mtd2)

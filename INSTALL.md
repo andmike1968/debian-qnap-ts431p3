@@ -37,18 +37,24 @@ for d in al_eth/src  .../drivers/al_nand  .../drivers/al_thermal  .../drivers/al
 
 ## 2. Build the initramfs
 
-The initramfs loads the network and NAND drivers, assembles the RAID and switches to Debian on `md0`.
+The initramfs loads the network driver, assembles the RAID and switches to Debian on `md0`.
 If `md0` is missing it drops to a shell on the serial console.
 
+1. Open `initramfs/init` and write your two MAC addresses (printed on the NAS label, or read them from QTS):
+   `eth0` = 2.5 GbE port, `eth1` = 1 GbE port.
+2. Run:
 ```sh
-mkdir -p ird/{bin,sbin,dev,proc,sys,etc,lib/modules,newroot}
-cp /usr/lib/arm-linux-gnueabihf/busybox-static ird/bin/busybox   # any static armhf busybox
-cp <static armhf mdadm> ird/sbin/mdadm
-cp al_eth.ko al_nand.ko ird/lib/modules/
-cp initramfs/init ird/init && chmod +x ird/init        # set your two MAC addresses inside
-(cd ird && find . | cpio -o -H newc | gzip -9) > initrd.gz
-mkimage -A arm -O linux -T ramdisk -C none -d initrd.gz uInitrd
+cd initramfs
+./build_initramfs.sh $W/al_eth/src/al_eth.ko mdadm.conf
 ```
+The script downloads `busybox-static`, `mdadm` and the few libraries it needs straight from the Debian archive
+(no cross-compiling), adds `init`, `dhcp.sh` and `al_eth.ko`, and writes `uInitrd`.
+It needs only `curl`, `xz`, `dpkg-deb`, `cpio`, `gzip` and `mkimage`.
+
+`mdadm.conf` describes your RAID arrays. For the very first boot (step 3) the RAID does not exist yet:
+use an empty file (`touch mdadm.conf`). After step 5, on the NAS run `mdadm --detail --scan > mdadm.conf`,
+copy it back and rebuild `uInitrd`.
+
 Put `uImage`, `alpine-qnap-ts431p3.dtb` and `uInitrd` in the TFTP directory.
 
 ## 3. First boot over the network (nothing is written)
