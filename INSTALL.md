@@ -211,5 +211,57 @@ needs `nfsd.ko`, not in our minimal config: enable `CONFIG_NFSD=m`), Samba, `pcp
 
 ## Going back to QTS
 
-From the U-Boot console: `run avvio_qts`. QTS will start as an uninitialised NAS (its system partitions on the
-disks are gone). For a full restore write back your `mtd*.bin` dumps.
+QTS is never erased: its second kernel copy (`boot2_kernel`, NAND offset `0xF800000`) and its system
+(`boot2_rootfs2`) stay untouched. What changes is the first kernel copy (now Debian), the U-Boot `bootcmd`
+and the disks. There are three levels, from the quickest to the complete one.
+
+> In every case QTS will find disks it does not know and will start as a **new, uninitialised NAS**:
+> its setup wizard (Qfinder / web page) re-creates its own partitions and **erases Debian and the data**.
+> Copy your data off the disks first.
+
+### A. Start QTS once (nothing is changed)
+
+On the serial console, stop the U-Boot countdown and type:
+```
+run avvio_qts
+```
+`avvio_qts` was created in step 9. If it is missing, type it by hand. `<QTS bootargs>` is the original
+`bootargs` line, saved in your environment backup (`printenv` output, or the variable `bootargs_qts`):
+```
+setenv bootargs '<QTS bootargs>'
+nand read ${loadaddr} 0xF800000 0x2000000
+run sata_cmd; run set_ddr_ro
+bootm ${loadaddr} - ${fdtaddr}
+```
+The next power-on starts Debian again.
+
+### B. Make QTS the default, keep Debian in the flash
+
+```
+setenv bootcmd 'run avvio_qts'
+saveenv
+reset
+```
+To go back to Debian later: `setenv bootcmd 'run avvio_nand; run avvio_rete; run avvio_qts'; saveenv`.
+
+### C. Complete restore (flash exactly as it came from the factory)
+
+1. From Debian (from the disks or over the network, step 4), load the NAND driver and write back your
+   step 5 backup of the first kernel copy:
+```sh
+insmod /lib/modules/6.12.*/extra/al_nand.ko modo_uboot=1
+flash_erase /dev/mtd2 0 0
+nandwrite -p /dev/mtd2 mtd2.bin
+cmp <(head -c $(stat -c %s mtd2.bin) /dev/mtd2ro) mtd2.bin && echo IDENTICAL
+```
+   Restore `mtd3`–`mtd6` the same way only if you changed them (this guide does not).
+2. On the serial console put back the original boot command (step 9 saved it as `bootcmd_qts_originale`):
+```
+setenv bootcmd 'nand read $loadaddr 0 0x2000000;run sata_cmd;run set_ddr_ro;bootm $loadaddr - $fdtaddr;'
+setenv bootargs '<QTS bootargs>'
+saveenv
+reset
+```
+   The extra variables added in step 9 (`avvio_*`, `rete_*`, `nand_carica`, ...) are harmless; remove them with
+   `setenv <name>` + `saveenv` if you want an identical environment.
+3. QTS starts from `boot1_kernel` as on a new NAS. Do **not** write back `mtd0` (U-Boot itself) unless it is damaged.
