@@ -1,5 +1,5 @@
 [Unit]
-Description=Driver porte USB del QNAP TS-431P3 (al_ext_pcie)
+Description=USB ports of the QNAP TS-431P3 (al_ext_pcie)
 After=local-fs.target
 [Service]
 Type=oneshot

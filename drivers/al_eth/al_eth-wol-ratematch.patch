@@ -8,7 +8,7 @@ index 25eeaf9..e0e4111 100644
  			case SPEED_10:
 -				if (adapter->mac_mode == AL_ETH_MAC_MODE_RGMII)
 +				if (phydev->interface == PHY_INTERFACE_MODE_10GBASER)
-+					/* 10/11/2026: PHY Aquantia in rate matching (XFI fisso verso il MAC): resta 10GbE */
++					/* Aquantia PHY in rate matching (fixed XFI towards the MAC): stay in 10GbE serial mode */
 +					mac_mode_needed = AL_ETH_MAC_MODE_10GbE_Serial;
 +				else if (adapter->mac_mode == AL_ETH_MAC_MODE_RGMII)
  					mac_mode_needed = AL_ETH_MAC_MODE_RGMII;
@@ -28,8 +28,8 @@ index 25eeaf9..e0e4111 100644
  #endif
  
 +
-+/* 09/11/2026: ethtool minimo per kernel 6.12 (il blocco originale e' incompatibile).
-+ * Velocita'/link e Wake-on-LAN passano direttamente al PHY collegato (netdev->phydev). */
++/* minimal ethtool ops for kernel 6.12 (the original block does not build).
++ * Speed/link and Wake-on-LAN go straight to the attached PHY (netdev->phydev). */
 +static void al_eth_min_get_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 +{
 +	wol->supported = 0; wol->wolopts = 0;
@@ -59,7 +59,7 @@ index 25eeaf9..e0e4111 100644
  	.ndo_select_queue	= al_eth_select_queue,
  	.ndo_get_stats64	= al_eth_get_stats64,
  	.ndo_do_ioctl		= al_eth_ioctl,
-+	.ndo_eth_ioctl		= al_eth_ioctl, /* 6.12: le ioctl MII passano da qui */
++	.ndo_eth_ioctl		= al_eth_ioctl, /* 6.12: MII ioctls come through here */
  	.ndo_tx_timeout		= al_eth_tx_timeout,
  	.ndo_change_mtu		= al_eth_change_mtu,
  	.ndo_set_mac_address	= al_eth_set_mac_addr,

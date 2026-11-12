@@ -1,7 +1,10 @@
-"""Nuovo comando di avvio del QNAP TS-431P3 via console seriale (09/11/2026).
-modo 'prova': definisce le variabili SOLO in RAM e prova la catena rete -> memoria interna (nessun saveenv).
-modo 'salva': definisce le variabili, verifica che siano identiche, cambia bootcmd, saveenv, reset.
-In ogni caso di dubbio: nessun saveenv e avvio manuale gia' collaudato dalla memoria interna."""
+"""Sets the U-Boot boot chain of the QNAP TS-431P3 over the serial console (/dev/ttyUSB0).
+Usage: python3 uboot_env.py test|save   (power the NAS on right after starting it)
+  test: defines the variables in RAM ONLY and tries the chain network -> NAND (no saveenv).
+  save: defines the variables, checks they are identical, changes bootcmd, saveenv.
+On any doubt: no saveenv, and a plain manual boot from NAND.
+Variable names (avvio_nand = boot from NAND, avvio_rete = boot from network, avvio_qts = boot QTS)
+are kept as they are on the running system."""
 import os, sys, termios, time
 MODO = sys.argv[1]
 fd = os.open('/dev/ttyUSB0', os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
@@ -22,7 +25,7 @@ def leggi(sec):
         time.sleep(0.02)
 
 def scrivi(c):
-    for ch in (c + '\r').encode():          # lento: niente caratteri persi sulle righe lunghe
+    for ch in (c + '\r').encode():          # slow: no lost characters on long lines
         os.write(fd, bytes([ch])); time.sleep(0.003)
 
 def comando(c, attesa):
@@ -35,8 +38,8 @@ def righe(out):
     return [l.strip() for l in out.replace('\r', '').split('\n')]
 
 def avvio_manuale(motivo):
-    """Percorso collaudato alle 07:05: nessuna variabile nuova, nessun saveenv."""
-    print(motivo + ' -> nessun saveenv, avvio manuale dalla memoria interna', flush=True)
+    """Known-good path: no new variables, no saveenv."""
+    print(motivo + ' -> no saveenv, manual boot from NAND', flush=True)
     for c in ('nand read 0x5000000 0x0 0xC00000', 'nand read 0x4000000 0xC00000 0x20000', 'nand read 0x4500000 0xE00000 0x240000'):
         comando(c, 30)
     comando('setenv bootargs console=ttyS0,115200 rdinit=/init rootmd', 1)
@@ -60,7 +63,7 @@ VAR = [
 ]
 NUOVO_BOOTCMD = 'if test "${forza_rete}" = 1; then run avvio_rete; fi; run avvio_nand; run avvio_rete; run avvio_qts'
 
-print('AVANZAMENTO: attendo il conto alla rovescia', flush=True)
+print('== waiting for the U-Boot countdown', flush=True)
 inizio = time.time()
 while time.time() - inizio < 600:
     leggi(0.1)
@@ -68,19 +71,19 @@ while time.time() - inizio < 600:
         for _ in range(600): os.write(fd, b' '); leggi(0.05)
         break
 else:
-    print('NESSUN CONTO ALLA ROVESCIA'); sys.exit(1)
-print('AVANZAMENTO: autoboot fermato', flush=True)
+    print('NO COUNTDOWN SEEN'); sys.exit(1)
+print('== autoboot stopped', flush=True)
 comando('', 1)
 env = comando('printenv', 6)
 open(f'/tmp/uboot_env_prima_{MODO}.txt', 'w').write(env)
 args = [l for l in righe(env) if l.startswith('bootargs=')]
 if len(args) != 1 or 'mtdparts=' not in args[0]:
-    avvio_manuale('bootargs QTS non trovati')
+    avvio_manuale('QTS bootargs not found')
 orig_args = args[0][len('bootargs='):]
 r1 = righe(comando('echo uno && echo due', 2)); r2 = righe(comando('test 1 -eq 2 && echo NONO', 2))
 if 'due' not in r1 or 'NONO' in r2:
-    avvio_manuale('&& non funziona come previsto')
-print('AVANZAMENTO: && funziona', flush=True)
+    avvio_manuale('&& does not work as expected')
+print('== && works', flush=True)
 errori = []
 for n, v in VAR:
     comando(f"setenv {n} '{v}'", 1)
@@ -90,18 +93,18 @@ comando(f"setenv bootargs_qts '{orig_args}'", 1)
 if f'bootargs_qts={orig_args}' not in righe(comando('printenv bootargs_qts', 2)):
     errori.append('bootargs_qts')
 if errori:
-    avvio_manuale('variabili non identiche: ' + ', '.join(errori))
-print('AVANZAMENTO: variabili verificate', flush=True)
-if MODO == 'prova':
-    print('AVANZAMENTO: provo catena rete -> memoria interna (senza salvare)', flush=True)
+    avvio_manuale('variables not identical: ' + ', '.join(errori))
+print('== variables verified', flush=True)
+if MODO == 'test':
+    print('== trying chain network -> NAND (not saving)', flush=True)
     scrivi('run avvio_rete; run avvio_nand'); leggi(200)
-elif MODO == 'salva':
+elif MODO == 'save':
     comando(f"setenv bootcmd '{NUOVO_BOOTCMD}'", 1)
     if f'bootcmd={NUOVO_BOOTCMD}' not in righe(comando('printenv bootcmd', 2)):
-        avvio_manuale('bootcmd non identico')
+        avvio_manuale('bootcmd not identical')
     r = comando('saveenv', 25)
-    print('AVANZAMENTO: saveenv -> ' + r.replace('\r', ' ').replace('\n', ' ')[-120:], flush=True)
+    print('== saveenv -> ' + r.replace('\r', ' ').replace('\n', ' ')[-120:], flush=True)
     open('/tmp/uboot_env_dopo.txt', 'w').write(comando('printenv', 6))
-    print('AVANZAMENTO: collaudo avvio di emergenza dalla rete (DHCP del router + server TFTP)', flush=True)
+    print('== testing emergency boot from the network (router DHCP + TFTP server)', flush=True)
     scrivi('run avvio_rete; run avvio_nand'); leggi(260)
-print('AVANZAMENTO: fine registrazione', flush=True)
+print('== end of log', flush=True)

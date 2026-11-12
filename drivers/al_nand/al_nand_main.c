@@ -753,7 +753,7 @@ static void nand_onfi_config_set(
 	onfi_page_size = page_size_bytes_convert(mtd->writesize);
 	device_properties->pageSize = onfi_page_size;
 
-	/* 09/11/2026: si tiene la configurazione ECC del bootstrap (uguale a U-Boot/QTS) */
+	/* keep the ECC configuration set by the bootstrap (same as U-Boot/QTS) */
 }
 
 static int modo_uboot;
@@ -822,8 +822,8 @@ static int al_nand_attach_chip(struct nand_chip *chip)
 		ecc->read_page = ecc_read_page;
 		ecc->read_subpage = ecc_read_subpage;
 		ecc->write_page = ecc_write_page;
-		/* 09/11/2026: con piu codeword per pagina il read_oob "syndrome" di default
-		 * leggeva lo spare a meta pagina (dati) -> falsi blocchi cattivi. Spare = in coda alla pagina. */
+		/* with several codewords per page the default "syndrome" read_oob read the spare area
+		 * from the middle of the page (data) -> false bad blocks. Spare is at the end of the page. */
 		if (modo_uboot) {
 			ecc->read_oob = nand_read_oob_std;
 			ecc->write_oob = nand_write_oob_std;
@@ -842,8 +842,8 @@ static const struct nand_controller_ops al_nand_controller_ops = {
 	.attach_chip = al_nand_attach_chip,
 };
 
-/* 09/11/2026: il controller non gestisce SET/GET FEATURES via cmdfunc legacy
- * (timeout). Come QTS, non usiamo le feature ONFI: il core le considera non supportate. */
+/* the controller does not handle SET/GET FEATURES through the legacy cmdfunc
+ * (timeout). As QTS, do not use ONFI features: the core treats them as unsupported. */
 static int al_nand_set_features(struct nand_chip *chip, int addr, u8 *p)
 {
 	return -ENOTSUPP;

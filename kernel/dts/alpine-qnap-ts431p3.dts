@@ -21,12 +21,12 @@
 
 	memory {
 		device_type = "memory";
-		reg = <0x0 0x0 0x0 0x80000000 0x0 0x80000000 0x0 0x40000000 0x2 0x0 0x0 0x40000000 0x1 0x0 0x1 0x0>; /* 8 GB come stock (serve LPAE) */
+		reg = <0x0 0x0 0x0 0x80000000 0x0 0x80000000 0x0 0x40000000 0x2 0x0 0x0 0x40000000 0x1 0x0 0x1 0x0>; /* copied from the QNAP DTB (up to 8 GB, needs LPAE); see README about RAM size */
 	};
 
 	soc {
 
-		/* SPI: chip del programma di avvio (U-Boot + ambiente). Prima prova: TUTTO in sola lettura */
+		/* SPI: boot loader chip (U-Boot + environment) */
 		spi@fd882000 {
 			compatible = "snps,dw-apb-ssi";
 			reg = <0x0 0xfd882000 0x0 0x1000>;
@@ -192,7 +192,7 @@
 	};
 };
 
-/* 10/11/2026: controller GPIO 2-4 (da DTB QTS) e LED dei dischi (al-sata-sw-leds, letti da ahci.c) */
+/* GPIO controllers 2-4 (from the QTS DTB) and HDD LEDs (al-sata-sw-leds, read by ahci.c) */
 / {
 	soc {
 		gpio2: gpio@fd889000 {

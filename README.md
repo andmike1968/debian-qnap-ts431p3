@@ -5,7 +5,7 @@ replacing QTS, with almost full hardware support and without losing the ability 
 
 This work started from [mornepousse/liberate_nas_qnap-ts431p](https://github.com/mornepousse/liberate_nas_qnap-ts431p)
 (TS-431P, AL-212) and the [al_eth-standalone](https://github.com/mornepousse/al_eth-standalone) driver.
-The TS-431P3 uses a different SoC (AL-314, quad Cortex-A15, 8 GB RAM) and different peripherals, so many
+The TS-431P3 uses a different SoC (AL-314, quad Cortex-A15) and different peripherals, so many
 pieces had to be added or rewritten. Everything here was tested on real hardware.
 
 > **Warning.** This writes to the internal NAND and the U-Boot environment. A mistake can leave the NAS
@@ -34,7 +34,8 @@ Debian rootfs, writing to NAND, U-Boot boot chain, extra hardware, and how to go
 
 ## Hardware notes (TS-431P3)
 
-- SoC Annapurna Labs **Alpine V1 AL-314**, 4× Cortex-A15, **8 GB** → kernel built with **LPAE** + HIGHMEM.
+- SoC Annapurna Labs **Alpine V1 AL-314**, 4× Cortex-A15. The kernel is built with **LPAE** + HIGHMEM,
+  so it can address more than 4 GB if the RAM has been upgraded (our unit runs with upgraded RAM).
 - 4 SATA bays on the second AHCI controller (`0000:00:09.0`), ports 0–3.
 - Serial console: 4-pin `UART0_DEBUG`, 115200 8N1, 3.3 V.
 - MCU (fan, power, buttons) on `/dev/ttyS1` at 115200 8N1.
@@ -69,6 +70,8 @@ These are the things that took the longest and that you will hit too:
   transmit at line rate, flooding the LAN, until reboot. Root cause in `al_eth` not found yet.
 - USB: UAS is not available (controller without streams), `usb-storage` is used. Tested with USB 2 disks,
   a USB 2 stick and a USB 3 disk (108 MB/s read).
+- The DTS `memory` node is copied from the QNAP DTB of our (upgraded) unit. We did not verify whether U-Boot
+  corrects it on units with the stock RAM: if Linux sees more memory than installed, fix `reg` in the DTS.
 - The `al_ext_pcie` module is a minimal port of QNAP's `pci-external-alpine.c`, not an upstreamable driver.
 
 ## Repository layout

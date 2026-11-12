@@ -1,6 +1,6 @@
-"""Prova di avvio Linux in RAM sul QNAP TS-431P3 via console seriale.
-Ferma l'autoboot, imposta la rete SOLO in memoria (nessun saveenv), scarica i file via TFTP
-e avvia con bootm. Non scrive nulla su NAND ne' sui dischi. Registra tutto in /tmp/nand_boot.txt."""
+"""One-shot test boot of Debian from NAND (boot1_kernel) on the QNAP TS-431P3 over the serial console.
+Stops autoboot, reads kernel, DTB and initramfs from NAND and boots with bootm.
+No saveenv, nothing is written. Full log in /tmp/nand_boot.txt."""
 import os
 import sys
 import termios
@@ -38,7 +38,7 @@ def comando(c, attesa):
     return buf
 
 
-print('AVANZAMENTO: accendi il NAS, attendo il conto alla rovescia', flush=True)
+print('== power the NAS on, waiting for the U-Boot countdown', flush=True)
 inizio = time.time()
 while time.time() - inizio < 600:
     leggi(0.1)
@@ -47,17 +47,17 @@ while time.time() - inizio < 600:
             os.write(fd, b' '); leggi(0.05)
         break
 else:
-    print('NESSUN CONTO ALLA ROVESCIA'); sys.exit(1)
-print('AVANZAMENTO: autoboot fermato', flush=True)
+    print('NO COUNTDOWN SEEN'); sys.exit(1)
+print('== autoboot stopped', flush=True)
 comando('', 1)
-# Prova: kernel, DTB e initramfs letti dalla MEMORIA INTERNA (boot1_kernel). Nessun saveenv.
+# kernel, DTB and initramfs read from NAND (boot1_kernel). No saveenv.
 for c, ok in (('nand read 0x5000000 0x0 0xC00000', b'OK'), ('nand read 0x4000000 0xC00000 0x20000', b'OK'), ('nand read 0x4500000 0xE00000 0x240000', b'OK')):
     r = comando(c, 30)
     if ok not in r:
-        print('LETTURA NAND FALLITA: ' + c, flush=True); sys.exit(4)
-    print('AVANZAMENTO: ' + c, flush=True)
+        print('NAND READ FAILED: ' + c, flush=True); sys.exit(4)
+    print('== ' + c, flush=True)
 comando('setenv bootargs console=ttyS0,115200 rdinit=/init rootmd', 1)
-print('AVANZAMENTO: avvio Linux dalla memoria interna', flush=True)
-os.write(fd, b'bootm 0x5000000 0x4500000 0x4000000')
+print('== booting Linux from NAND', flush=True)
+os.write(fd, b'bootm 0x5000000 0x4500000 0x4000000\r')
 leggi(150)
-print('AVANZAMENTO: fine registrazione', flush=True)
+print('== end of log', flush=True)

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Carica il driver USB (al_ext_pcie) a ogni avvio, con due protezioni (10/11/2026):
-# 1) se il caricamento precedente non e arrivato in fondo (file segnale presente), NON riprova;
-# 2) durante il caricamento il watchdog hardware e attivo: se il kernel si blocca, il NAS si riavvia.
+# Loads the USB driver (al_ext_pcie) at every boot, with two safety nets:
+# 1) if the previous load never finished (marker file still present), do NOT try again;
+# 2) while loading, the hardware watchdog is armed: if the kernel hangs, the NAS reboots.
 F=/var/lib/al-usb-in-corso
-if [ -f $F ]; then echo "USB: caricamento precedente non concluso, salto" | systemd-cat -t avvia-usb; exit 0; fi
+if [ -f $F ]; then echo "USB: previous load did not finish, skipping" | systemd-cat -t avvia-usb; exit 0; fi
 touch $F; sync
 /usr/local/sbin/nutri_wd.py & W=$!
 sleep 1

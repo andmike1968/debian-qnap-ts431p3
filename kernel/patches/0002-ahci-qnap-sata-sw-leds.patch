@@ -14,13 +14,13 @@
  };
  
 +/*
-+ * 10/11/2026: LED dei dischi del QNAP TS-431P3, comandati da GPIO come in QTS
-+ * (al_ahci_transmit_led_message di libahci.c QNAP, nodo "annapurna-labs,al-sata-sw-leds").
-+ * Valore logico 1 = LED acceso (la polarita' sta nel DTB). Spento se la porta non ha disco.
++ * HDD LEDs of the QNAP TS-431P3, driven by GPIOs as in QTS
++ * (al_ahci_transmit_led_message in QNAP libahci.c, node "annapurna-labs,al-sata-sw-leds").
++ * Logical 1 = LED on (polarity in the DTB). Off when the port has no disk.
 + */
 +static bool al_led_inverti;
 +module_param_named(led_inverti, al_led_inverti, bool, 0644);
-+MODULE_PARM_DESC(led_inverti, "inverte i LED dei dischi QNAP (polarita' GPIO)");
++MODULE_PARM_DESC(led_inverti, "invert the QNAP HDD LEDs (GPIO polarity)");
 +
 +static ssize_t al_ahci_transmit_led_message(struct ata_port *ap, u32 state,
 +					    ssize_t size)
@@ -70,7 +70,7 @@
 +		g = devm_fwnode_gpiod_get_index(&pdev->dev, of_fwnode_handle(child),
 +						NULL, 0, GPIOD_OUT_LOW, "sata led");
 +		if (IS_ERR(g)) {
-+			dev_warn(&pdev->dev, "LED porta %u: gpio non disponibile (%ld)\n",
++			dev_warn(&pdev->dev, "LED port %u: gpio not available (%ld)\n",
 +				 port, PTR_ERR(g));
 +			continue;
 +		}
@@ -78,7 +78,7 @@
 +		hpriv->em_msg_type = EM_MSG_TYPE_LED;
 +		pi->flags |= ATA_FLAG_EM | ATA_FLAG_SW_ACTIVITY;
 +		pi->port_ops = &ahci_al_ops;
-+		dev_info(&pdev->dev, "LED porta %u su GPIO\n", port);
++		dev_info(&pdev->dev, "LED port %u on GPIO\n", port);
 +	}
 +	of_node_put(np);
 +}
@@ -100,7 +100,7 @@
  	if (rc)
  		goto err_rm_sysfs_file;
  
-+	/* 10/11/2026: LED QNAP lampeggianti di default (QTS: acceso fermo, lampeggio su attivita') */
++	/* QNAP LEDs blink by default (as QTS: on when idle, blinking on activity) */
 +	if (board_id == board_ahci_al) {
 +		for (i = 0; i < host->n_ports; i++) {
 +			struct ata_port *ap = host->ports[i];
@@ -132,7 +132,7 @@
  	int			(*get_irq_vector)(struct ata_host *host,
  						  int port);
 +
-+	/* 10/11/2026: LED dei dischi su GPIO (QNAP TS-431P3, come QTS) */
++	/* HDD LEDs on GPIO (QNAP TS-431P3, as QTS) */
 +	struct gpio_desc	*led_gpio[AHCI_MAX_PORTS];
  };
  

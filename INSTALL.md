@@ -24,7 +24,7 @@ bash kernel/build_kernel.sh          # downloads 6.12 LTS, builds zImage, DTB, u
 cd $W/linux-6.12.*
 patch -p1 < .../kernel/patches/0001-aquantia-qnap-aqr112-id.patch
 patch -p1 < .../kernel/patches/0002-ahci-qnap-sata-sw-leds.patch
-cp .../kernel/config-6.12.116-ts431p3 .config && make ARCH=arm olddefconfig   # LPAE, 8 GB
+cp .../kernel/config-6.12.116-ts431p3 .config && make ARCH=arm olddefconfig   # LPAE
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc) zImage modules amazon/alpine-qnap-ts431p3.dtb
 mkimage -A arm -O linux -T kernel -C none -a 0x00008000 -e 0x00008000 -d arch/arm/boot/zImage $W/out/uImage
 ```
@@ -143,7 +143,7 @@ Copy the files in `system/`:
 | `al_ext_pcie.conf` | `/etc/modprobe.d/` | USB driver option |
 | `avvia-usb.sh`, `nutri_wd.py` | `/usr/local/sbin/` | load USB driver at boot, guarded by the hardware watchdog |
 | `avvia-usb.service` | `/etc/systemd/system/` (`systemctl enable avvia-usb`) | |
-| `90-nas-memoria.conf` | `/etc/sysctl.d/` | `vm.min_free_kbytes=65536` (network stability) |
+| `90-nas-memory.conf` | `/etc/sysctl.d/` | `vm.min_free_kbytes=65536` (network stability) |
 
 Wake-on-LAN: `ethtool enp0s1` must show `Wake-on: g`; wake it with `wakeonlan <MAC of enp0s1>`.
 
