@@ -262,6 +262,6 @@ setenv bootargs '<QTS bootargs>'
 saveenv
 reset
 ```
-   The extra variables added in step 9 (`avvio_*`, `rete_*`, `nand_load`, ...) are harmless; remove them with
+   The extra variables added in step 9 (`boot_*`, `net_*`, `nand_load`, ...) are harmless; remove them with
    `setenv <name>` + `saveenv` if you want an identical environment.
 3. QTS starts from `boot1_kernel` as on a new NAS. Do **not** write back `mtd0` (U-Boot itself) unless it is damaged.
