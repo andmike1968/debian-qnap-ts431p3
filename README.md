@@ -11,6 +11,12 @@ pieces had to be added or rewritten. Everything here was tested on real hardware
 > **Warning.** This writes to the internal NAND and the U-Boot environment. A mistake can leave the NAS
 > unbootable without a serial console. Make full backups of all MTD partitions first. No warranty.
 
+> **⚠️ RAM size — check this before the first boot.** The `memory` node in
+> `kernel/dts/alpine-qnap-ts431p3.dts` describes **8 GB**, because our unit has upgraded RAM.
+> TS-431P3 units are sold with different amounts of RAM. If your NAS has less, and U-Boot does not correct
+> the value (we could not verify this), Linux will try to use memory that does not exist and will crash or
+> corrupt data. See [INSTALL.md, step 1](INSTALL.md#1-build-kernel-device-tree-and-drivers) for how to read the right value.
+
 ## What works
 
 | Feature | Status | How |
@@ -82,8 +88,7 @@ These are the things that took the longest and that you will hit too:
   transmit at line rate, flooding the LAN, until reboot. Root cause in `al_eth` not found yet.
 - USB: UAS is not available (controller without streams), `usb-storage` is used. Tested with USB 2 disks,
   a USB 2 stick and a USB 3 disk (108 MB/s read).
-- The DTS `memory` node is copied from the QNAP DTB of our (upgraded) unit. We did not verify whether U-Boot
-  corrects it on units with the stock RAM: if Linux sees more memory than installed, fix `reg` in the DTS.
+- **RAM size in the DTS**: the `memory` node is set for 8 GB (our upgraded unit). See the warning at the top.
 - The `al_ext_pcie` module is a minimal port of QNAP's `pci-external-alpine.c`, not an upstreamable driver.
 
 ## Repository layout

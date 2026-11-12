@@ -36,6 +36,22 @@ for d in al_eth/src  .../drivers/al_nand  .../drivers/al_thermal  .../drivers/al
   make -C $W/linux-6.12.* ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- M=$d modules; done
 ```
 
+### ⚠️ Before building: set the RAM size in the DTS
+
+The `memory` node in `kernel/dts/alpine-qnap-ts431p3.dts` describes **8 GB** (our unit has upgraded RAM):
+```
+reg = <0x0 0x0 0x0 0x80000000  0x0 0x80000000 0x0 0x40000000  0x2 0x0 0x0 0x40000000  0x1 0x0 0x1 0x0>;
+```
+If your NAS has a different amount of RAM, this value may be **wrong**, and a wrong value can crash Linux
+or corrupt data. Get the right one from **your own** NAS while QTS is still running (SSH as admin):
+```sh
+hexdump -C /proc/device-tree/memory/reg
+```
+Each group of 16 bytes is one memory bank: 8 bytes of start address and 8 bytes of size, both big-endian.
+Copy the same numbers into `reg` (as 32-bit cells) and rebuild the DTB. If QTS is already gone, the U-Boot command
+`bdinfo` shows the DRAM banks. After the first boot (step 3) always check that `grep MemTotal /proc/meminfo`
+matches the RAM actually installed (a little less is normal).
+
 ## 2. Build the initramfs
 
 The initramfs loads the network driver, assembles the RAID and switches to Debian on `md0`.
@@ -80,7 +96,8 @@ tftpboot 0x5000000 uImage; tftpboot 0x4000000 alpine-qnap-ts431p3.dtb; tftpboot 
 setenv bootargs console=ttyS0,115200 rdinit=/init
 bootm 0x5000000 0x4500000 0x4000000
 ```
-You get a small shell on the serial console: check that the 4 cores, the memory, the disks and the network are seen.
+You get a small shell on the serial console: check that the 4 cores, the disks and the network are seen,
+and **that `grep MemTotal /proc/meminfo` matches your installed RAM** (see step 1). If it shows more, stop and fix the DTS.
 Without `rootmd` or `debroot=` on the command line the disks are **not touched**.
 (On this board U-Boot resets `ipaddr`/`serverip` to 169.254.x.x at every power-on: set them each time.)
 
